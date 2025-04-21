@@ -1,4 +1,6 @@
-﻿module TorchUtils
+namespace Utils
+
+module TorchUtils =
     open TorchSharp
     open type TorchSharp.torch.nn
     
