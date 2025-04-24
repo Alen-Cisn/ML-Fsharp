@@ -3,14 +3,14 @@ module GridBroad =
     open System
     open System.Collections.Generic
 
-    type BoardPiece = {
-        Name : string
+    type BoardPiece<'a> = {
+        Name : 'a
         Code : string
         Pos : int * int
     }
 
-    type BoardMask = {
-        Name : string
+    type BoardMask<'a> = {
+        Name : 'a
         Mask : bool[,]
         Code : string
     } with
@@ -19,9 +19,9 @@ module GridBroad =
                 for y in 0..this.Mask.GetLength 1-1 do
                     if this.Mask.[x,y] then yield x,y ]
 
-    type GridBoard(size: int) =
-        let components = Dictionary<string, BoardPiece>()
-        let masks = Dictionary<string, BoardMask>()
+    type GridBoard<'a when 'a: equality>(size: int)=
+        let components = Dictionary<'a, BoardPiece<'a>>()
+        let masks = Dictionary<'a, BoardMask<'a>>()
         
         member _.Size = size
         

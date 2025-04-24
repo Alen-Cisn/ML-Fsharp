@@ -21,7 +21,7 @@ module IOUtils =
         | Error errorValue -> failwith errorValue
 
 
-    let display2DArray (array: string[,]) =
+    let display2DArray (array: string[,]) (previousArray: string[,] option) =
         Console.Clear()
         let isCodePointWide codePoint =
             // Check if the Unicode code point belongs to a wide character range
@@ -64,7 +64,7 @@ module IOUtils =
 
         let stringBuilder = Text.StringBuilder()
 
-        let displayLine (firstCharacter: char) (evenCharacter: char) (oddCharacter: char) (lastCharacter: char) =
+        let displayLine (evenCharacter: char) (firstCharacter: char)  (oddCharacter: char) (lastCharacter: char) =
             stringBuilder.Append firstCharacter |> ignore
             for j in 0 .. displayCols - 3 do
                 if j % 2 = 0 then
@@ -74,13 +74,14 @@ module IOUtils =
                     stringBuilder.Append oddCharacter |> ignore
             stringBuilder.Append lastCharacter |> ignore
             
+        let displayLine = displayLine '─'
         for i in 0 .. displayRows - 1 do
             if i = 0 then
-                displayLine '┌' '─' '┬' '┐'
+                displayLine '┌'  '┬' '┐'
             else if i = displayRows - 1 then
-                displayLine '└' '─' '┴' '┘'
+                displayLine '└' '┴' '┘'
             else if i % 2 = 0 then
-                displayLine '├' '─' '┼' '┤'
+                displayLine '├' '┼' '┤'
             else 
                 for j in 0 .. displayCols - 1 do
                     if j % 2 = 0 then
@@ -90,9 +91,12 @@ module IOUtils =
                         let col = j / 2
                         let value = array.[col, row]
                         let spaceFill = maxLength - getDisplayWidth value
+
                         for _ in 0 .. spaceFill / 2 - 1 do
                             stringBuilder.Append ' ' |> ignore
+
                         stringBuilder.Append $"{value}" |> ignore
+
                         for _ in 0 .. spaceFill / 2 - 1 + spaceFill % 2 do
                             stringBuilder.Append ' ' |> ignore
 

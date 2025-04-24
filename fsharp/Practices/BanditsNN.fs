@@ -92,83 +92,84 @@ module BanditsNN =
             (generator: torch.Generator)
             (epochs: int)
             (rewards: float32 list) =
+            (* Diagram of the neural network:
+                                                                                Layer 1
+            ┌────────────────────────┐   N    ┌────────────┐   R¹⁰    ┌────────────┐         ┌──────┐
+            │environment.CurrentState│───────>│oneHotEncode│─────────˃│ θ₁: 10×100 │────────>│ ReLU │───┐
+            └────────────────────────┘        └────────────┘          └────────────┘         └──────┘   │
+                                                                                                        │ R¹⁰⁰
+                                                                                Layer 2                 │
+            ┌────────────┐   P¹⁰  ┌───────────────┐       R¹⁰      ┌──────┐         ┌────────────┐      │
+            │samp. action│<───────│    softmax    │<─────┬─────────│ ReLU │<────────│ θ₂: 100×10 │<─────┘
+            └────────────┘        └───────────────┘      │         └──────┘         └────────────┘
+                N │                                      │
+                    ˅                                      ˅
+            ┌─────────────────────┐   Reward: N   ┌────────────┐   R¹⁰    ┌─────────┐
+            │environment.ChooseArm│──────────────>│lossFunction│─────────>│Optimizer│
+            └─────────────────────┘               └────────────┘          └─────────┘
+            *)
+            // --- 1. State Preparation ---
+            // Get the current state from the environment
+            let discreteState = environment.CurrentState
+            // One-hot encode the discrete state
+            let oneHotState = oneHotEncode (numberOfArms, discreteState, 1.0f)
+            // Convert the state representation to a tensor for the model
+            let currentStateTensor = torch.tensor oneHotState
+            // --- 2. Forward Pass (Prediction) ---
+            // Pass the state through the neural network to get predicted values (Q-values) for each arm.
+            // Output shape should be [numberOfArms] due to corrected outputDimension.
+            let predictedRewards = model.forward currentStateTensor
+
+            // --- 3. Action Selection (Epsilon-Greedy or Softmax Sampling) ---
+            // Convert predicted rewards (logits) into a probability distribution over actions using softmax.
+            // Temperature (tau > 1.0) encourages exploration by making probabilities more uniform.
+            let probabilityDistribution = softmax predictedRewards 1.3f 0L // Using temperature tau=2.0
+            // Normalize explicitly (optional, softmax should be close)
+            let normalizedProbabilityDistribution = probabilityDistribution / torch.sum probabilityDistribution
+            // Sample an action (arm index) from the probability distribution.
+            // Actions with higher predicted rewards have higher probability of being chosen.
+            let chosenArmIndex64 = sampleIndexFromProbabilities normalizedProbabilityDistribution (Some generator)
+            let chosenArmIndex = int chosenArmIndex64 // Convert to int for environment interaction
+
+            // --- 4. Environment Interaction ---
+            // Execute the chosen action in the environment and observe the reward.
+            // The environment also transitions to its next state internally.
+            let currentReward = environment.ChooseArm chosenArmIndex
+
+            // --- 5. Target Calculation (for Loss) ---
+            // Create a target tensor for the loss function. Start by cloning the original predictions.
+            // Detach the clone from the computation graph; gradients should not flow back through the target.
+            let targetRewards = predictedRewards.clone().detach()
+            // Create a tensor scalar for the actual reward received.
+            // Ensure dtype and device match the target tensor for assignment.
+            let actualRewardTensor = torch.tensor(currentReward, dtype=predictedRewards.dtype, device=predictedRewards.device)
+            // Modify the target tensor: Update the value for the *chosen* action to be the *actual* reward received.
+            // The targets for unchosen actions remain the original predicted values.
+            targetRewards.[chosenArmIndex64] <- actualRewardTensor
+                
+
+            // --- 6. Loss Calculation ---
+            // Calculate the loss between the network's predictions (predictedRewards) and the target (targetRewards).
+            // MSELoss compares the prediction for the chosen arm with the actual reward, 
+            // and the predictions for unchosen arms with themselves (resulting in zero loss for those arms).
+            let loss = lossFunction.forward(predictedRewards, targetRewards)
+
+            // --- 7. Backpropagation and Optimization ---
+            // Clear gradients from the previous step before calculating new ones.
+            optimizer.zero_grad()
+            // Compute gradients of the loss with respect to all model parameters.
+            loss.backward()
+            // Update the model parameters based on the computed gradients using the optimizer algorithm (e.g., Adam).
+            optimizer.step() |> ignore
+
+            // --- 8. Recursion ---
+            // Continue training for the remaining epochs with the updated model and optimizer state.
+            let rewards = currentReward :: rewards
             if epochs = 0 then
                 // Base case: Training complete, return accumulated rewards
                 rewards
             else
-                (* Diagram of the neural network:
-                                                                                    Layer 1
-                ┌────────────────────────┐   N    ┌────────────┐   R¹⁰    ┌────────────┐         ┌──────┐
-                │environment.CurrentState│───────>│oneHotEncode│─────────˃│ θ₁: 10×100 │────────>│ ReLU │───┐
-                └────────────────────────┘        └────────────┘          └────────────┘         └──────┘   │
-                                                                                                            │ R¹⁰⁰
-                                                                                    Layer 2                 │
-                ┌────────────┐   P¹⁰  ┌───────────────┐       R¹⁰      ┌──────┐         ┌────────────┐      │
-                │samp. action│<───────│    softmax    │<─────┬─────────│ ReLU │<────────│ θ₂: 100×10 │<─────┘
-                └────────────┘        └───────────────┘      │         └──────┘         └────────────┘
-                    N │                                      │
-                      ˅                                      ˅
-                ┌─────────────────────┐   Reward: N   ┌────────────┐   R¹⁰    ┌─────────┐
-                │environment.ChooseArm│──────────────>│lossFunction│─────────>│Optimizer│
-                └─────────────────────┘               └────────────┘          └─────────┘
-                *)
-                // --- 1. State Preparation ---
-                // Get the current state from the environment
-                let discreteState = environment.CurrentState
-                // One-hot encode the discrete state
-                let oneHotState = oneHotEncode (numberOfArms, discreteState, 1.0f)
-                // Convert the state representation to a tensor for the model
-                let currentStateTensor = torch.tensor oneHotState
-                // --- 2. Forward Pass (Prediction) ---
-                // Pass the state through the neural network to get predicted values (Q-values) for each arm.
-                // Output shape should be [numberOfArms] due to corrected outputDimension.
-                let predictedRewards = model.forward currentStateTensor
-
-                // --- 3. Action Selection (Epsilon-Greedy or Softmax Sampling) ---
-                // Convert predicted rewards (logits) into a probability distribution over actions using softmax.
-                // Temperature (tau > 1.0) encourages exploration by making probabilities more uniform.
-                let probabilityDistribution = softmax predictedRewards 1.3f 0L // Using temperature tau=2.0
-                // Normalize explicitly (optional, softmax should be close)
-                let normalizedProbabilityDistribution = probabilityDistribution / torch.sum probabilityDistribution
-                // Sample an action (arm index) from the probability distribution.
-                // Actions with higher predicted rewards have higher probability of being chosen.
-                let chosenArmIndex64 = sampleIndexFromProbabilities normalizedProbabilityDistribution (Some generator)
-                let chosenArmIndex = int chosenArmIndex64 // Convert to int for environment interaction
-
-                // --- 4. Environment Interaction ---
-                // Execute the chosen action in the environment and observe the reward.
-                // The environment also transitions to its next state internally.
-                let currentReward = environment.ChooseArm chosenArmIndex
-
-                // --- 5. Target Calculation (for Loss) ---
-                // Create a target tensor for the loss function. Start by cloning the original predictions.
-                // Detach the clone from the computation graph; gradients should not flow back through the target.
-                let targetRewards = predictedRewards.clone().detach()
-                // Create a tensor scalar for the actual reward received.
-                // Ensure dtype and device match the target tensor for assignment.
-                let actualRewardTensor = torch.tensor(currentReward, dtype=predictedRewards.dtype, device=predictedRewards.device)
-                // Modify the target tensor: Update the value for the *chosen* action to be the *actual* reward received.
-                // The targets for unchosen actions remain the original predicted values.
-                targetRewards.[chosenArmIndex64] <- actualRewardTensor
-                
-
-                // --- 6. Loss Calculation ---
-                // Calculate the loss between the network's predictions (predictedRewards) and the target (targetRewards).
-                // MSELoss compares the prediction for the chosen arm with the actual reward, 
-                // and the predictions for unchosen arms with themselves (resulting in zero loss for those arms).
-                let loss = lossFunction.forward(predictedRewards, targetRewards)
-
-                // --- 7. Backpropagation and Optimization ---
-                // Clear gradients from the previous step before calculating new ones.
-                optimizer.zero_grad()
-                // Compute gradients of the loss with respect to all model parameters.
-                loss.backward()
-                // Update the model parameters based on the computed gradients using the optimizer algorithm (e.g., Adam).
-                optimizer.step() |> ignore
-
-                // --- 8. Recursion ---
-                // Continue training for the remaining epochs with the updated model and optimizer state.
-                train environment model optimizer generator (epochs-1) (currentReward :: rewards )
+                train environment model optimizer generator (epochs-1) rewards
 
 
         let startTraining
