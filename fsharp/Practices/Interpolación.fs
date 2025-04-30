@@ -6,7 +6,7 @@ module Interpolación =
 
     let rec fact n = 
         if n = 0. then 1.
-        else n * fact n
+        else n * fact (n - 1.)
 
     let ℓ xs j (x: float) = 
         let up = 

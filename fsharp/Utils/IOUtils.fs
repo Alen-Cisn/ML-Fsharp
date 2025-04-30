@@ -22,7 +22,7 @@ module IOUtils =
 
 
     let display2DArray (array: string[,]) (previousArray: string[,] option) =
-        Console.Clear()
+        //Console.Clear()
         let isCodePointWide codePoint =
             // Check if the Unicode code point belongs to a wide character range
             codePoint >= 0x1100 && codePoint <= 0x115F ||

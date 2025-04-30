@@ -12,8 +12,7 @@
     Value function: V_π(s) = E(R|s, π). Maps a state, s, to the expected rewards that can be obtained by following π from s.
     Action-value function: Q_π(s,a) = E(R|s,a,π). Maps a state-action pair, (s,a), to the expected rewards that can be obtained by following π from s and taking action a.
         This is often called the Q-function, and their result Q_π(s,a) is called the Q-value.
-*)
-(*
+
     Q-learning: A particular RL algorithm that learns the optimal action values.
         Update rule: Q(s_t,a_t) = Q(s_t,a_t) + α [r_{t+1} + γ max_a Q(s_{t+1},a) - Q(s_t,a_t)]
                          ^           ^         ^    ^       ^           ^            ^
@@ -36,12 +35,10 @@ module DQN =
 
     open TorchSharp
     open type TorchSharp.torch.nn
-    open type TorchSharp.torch.optim
     open Plotly.NET
 
     open Practices.Environments
     open Utils.IOUtils
-
     let [<Literal>] NumberOfActions = 4
     let startGridWorld() =
         let rec readSize () =
@@ -70,9 +67,10 @@ module DQN =
         let random = Random seed
         let environment = Gridworld(size, StaticMode)
         let board = environment.Board.RenderNp()
+
         let inputDimension = Array3D.length1 board * Array3D.length2 board * Array3D.length3 board
-        let firstHiddenDimension = inputDimension / 2
-        let secondHiddenDimension = inputDimension / 4
+        let firstHiddenDimension = inputDimension
+        let secondHiddenDimension = inputDimension / 2
         let outputDimension = NumberOfActions
 
         let model :  torch.nn.Module<torch.Tensor, torch.Tensor> = 
@@ -88,10 +86,10 @@ module DQN =
 
         let lossFunction = MSELoss()
         let learningRate = 1e-3
-        let gamma = 0.9
-        let epsilon = 1.0
+        let gamma = 0.9f
+        let epsilon = 1.0f
 
-        let rec train (model: torch.nn.Module<torch.Tensor, torch.Tensor>) (optimizer: torch.optim.Optimizer) (generator: torch.Generator) (epsilon: float) (gamma: float) (epochs: int) (losses: float list) =
+        let rec train (model: torch.nn.Module<torch.Tensor, torch.Tensor>) (optimizer: torch.optim.Optimizer) (generator: torch.Generator) (epsilon: float32) (gamma: float32) (epochs: int) (losses: float32 list) =
             // Reset the environment
             let environment = Gridworld(size, StaticMode)
 
@@ -105,14 +103,14 @@ module DQN =
                         for j in 0 .. Array3D.length2 state - 1 do
                             for k in 0 .. Array3D.length3 state - 1 do
                                 // Add noise to the state in order to avoid "dead" neurons and make the model less overfit.
-                                yield float (int state[i,j,k]) + random.NextDouble() / 10.
+                                yield float32 (int state[i,j,k]) + random.NextSingle() / 10f
                     |]
-                let stateTensor = torch.tensor(dirtyStateVector, dtype=torch.ScalarType.Float64)
+                let stateTensor = torch.tensor(dirtyStateVector)
                 // Get the Q-values for the current state for each action
                 let qValues = model.forward stateTensor
                 // Get the action with the highest Q-value
                 let actionInt = 
-                    if random.NextDouble() < epsilon then
+                    if random.NextSingle() < epsilon then
                         random.NextInt64 NumberOfActions 
                     else
                         qValues.argmax(dim=0).item<int64>()
@@ -134,37 +132,38 @@ module DQN =
                     for i in 0 .. Array3D.length1 nextState - 1 do
                         for j in 0 .. Array3D.length2 nextState - 1 do
                             for k in 0 .. Array3D.length3 nextState - 1 do
-                                yield float (int nextState[i,j,k]) + random.NextDouble() / 10.
+                                yield float32 (int nextState[i,j,k]) + random.NextSingle() / 10f
                     |]
-                let nextStateTensor = torch.tensor(dirtyNextStateVector, dtype=torch.ScalarType.Float64)
+                let nextStateTensor = torch.tensor(dirtyNextStateVector)
                 let qValues_t1 = 
                     use _ = torch.no_grad()
                     model.forward nextStateTensor
 
                 let maxQValue_t1Tensor = fst (qValues_t1.max(dim=0).ToTuple())
-                let maxQValue_t1 = maxQValue_t1Tensor.item<float>()
+                let maxQValue_t1 = maxQValue_t1Tensor.item<float32>()
 
                 // Calculate with the update rule of Q-learning
                 let secondTerm = 
                     if reward_t1 = -1 then
-                        float reward_t1 + gamma * float maxQValue_t1
+                        float32 reward_t1 + gamma * float32 maxQValue_t1
                     else
-                        float reward_t1
+                        float32 reward_t1
 
-                let y = torch.tensor([|secondTerm|], dtype=torch.ScalarType.Float64)
+                let y = torch.tensor([|secondTerm|], dtype=torch.ScalarType.Float32).detach()
                 let actionIndexTensor = torch.tensor([|int64 actionInt|], dtype=torch.ScalarType.Int64)
                 let x = qValues.gather(dim=0, index=actionIndexTensor)
                 let loss = lossFunction.forward(x, y)
+
                 optimizer.zero_grad()
                 loss.backward()
-                let lossValue = loss.item<float>()
+                let lossValue = loss.item<float32>()
                 let tensor = optimizer.step()
 
                 let losses = lossValue :: losses
-                if reward_t1 <> -1 then
-                    losses
-                else
+                if reward_t1 = -1 then
                     trainStep epsilon nextState losses
+                else
+                    losses
 
             // Get the initial state
             let state = environment.Board.RenderNp()
@@ -173,8 +172,8 @@ module DQN =
             let losses = trainStep epsilon state losses
 
             let epsilon = 
-                if epsilon > 0.01 then
-                    epsilon - 1.0 / float epochs
+                if epsilon > 0.01f then
+                    epsilon - 1.0f / float32 epochs
                 else
                     epsilon
 
@@ -183,12 +182,12 @@ module DQN =
             else
                 losses
         
-        let startTraining (model: torch.nn.Module<torch.Tensor, torch.Tensor>) (learningRate: float) (epsilon: float) (gamma: float) (epochsInTens: int) =
+        let startTraining (model: torch.nn.Module<torch.Tensor, torch.Tensor>) (learningRate: float) (epsilon: float32) (gamma: float32) (epochsInTens: int) =
             let optimizer = torch.optim.Adam(model.parameters(), lr=learningRate)
             let generator = new torch.Generator(uint64 seed)
             train  model optimizer generator epsilon gamma (epochsInTens * 10) []
         
-        let epochsInTens = 100
+        let epochsInTens = 700
         let losses = startTraining model learningRate epsilon gamma epochsInTens |> List.rev
         // Plot the losses with Plotly.NET
         let x = [0 .. (epochsInTens * 10)]
