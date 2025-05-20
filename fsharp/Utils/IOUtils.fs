@@ -104,3 +104,62 @@ module IOUtils =
             stringBuilder.Append '\n' |> ignore
 
         stringBuilder.ToString()
+
+
+    let display2DListOfFloats (list: float list list) =
+
+        let getDisplayWidth (s: float) =
+            s.ToString().Length
+
+        let rows = list.Length
+        let cols = list.[0].Length
+        let displayRows = rows * 2 + 1
+        let displayCols = cols * 2 + 1
+        let maxLength =
+            list
+            |> List.collect (fun row -> row |> List.map getDisplayWidth)
+            |> List.max
+
+
+        let stringBuilder = Text.StringBuilder()
+
+        let displayLine (evenCharacter: char) (firstCharacter: char)  (oddCharacter: char) (lastCharacter: char) =
+            stringBuilder.Append firstCharacter |> ignore
+            for j in 0 .. displayCols - 3 do
+                if j % 2 = 0 then
+                    for _ in 0 .. maxLength - 1 do
+                        stringBuilder.Append evenCharacter |> ignore
+                else
+                    stringBuilder.Append oddCharacter |> ignore
+            stringBuilder.Append lastCharacter |> ignore
+            
+        let displayLine = displayLine '─'
+        for i in 0 .. displayRows - 1 do
+            if i = 0 then
+                displayLine '┌'  '┬' '┐'
+            else if i = displayRows - 1 then
+                displayLine '└' '┴' '┘'
+            else if i % 2 = 0 then
+                displayLine '├' '┼' '┤'
+            else 
+                for j in 0 .. displayCols - 1 do
+                    if j % 2 = 0 then
+                        stringBuilder.Append '│' |> ignore
+                    else
+                        let row = i / 2
+                        let col = j / 2
+                        let value = list.[row].[col]
+                        let spaceFill = maxLength - getDisplayWidth value
+
+                        for _ in 0 .. spaceFill / 2 - 1 do
+                            stringBuilder.Append ' ' |> ignore
+
+                        stringBuilder.Append $"{value}" |> ignore
+
+                        for _ in 0 .. spaceFill / 2 - 1 + spaceFill % 2 do
+                            stringBuilder.Append ' ' |> ignore
+
+
+            stringBuilder.Append '\n' |> ignore
+
+        stringBuilder.ToString()

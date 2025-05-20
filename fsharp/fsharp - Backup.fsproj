@@ -37,7 +37,7 @@
     <Optimize>True</Optimize>
   </PropertyGroup>
 
-  <ItemGroup><Compile Include="Utils/TorchUtils.fs" /><Compile Include="Utils/IOUtils.fs" /><Compile Include="Practices\Math\Interpolación.fs" /><Compile Include="Practices\Math\RaícesEcuacionesNoLineales.fs" /><Compile Include="Practices\Math\Matrices.fs" /><Compile Include="Practices/Environments/GridBoard.fs" /><Compile Include="Practices/Environments/GridWorld.fs" /><Compile Include="Practices\DQN.fs" /><Compile Include="Practices/BanditsNN.fs" />
+  <ItemGroup><Compile Include="Practices\Math\Matrices.fs" /><Compile Include="Practices\Math\Interpolación.fs" /><Compile Include="Practices\Math\RaícesEcuacionesNoLineales.fs" /><Compile Include="Utils/TorchUtils.fs" /><Compile Include="Utils/IOUtils.fs" /><Compile Include="Practices/Environments/GridBoard.fs" /><Compile Include="Practices/Environments/GridWorld.fs" /><Compile Include="Practices\DQN.fs" /><Compile Include="Practices/BanditsNN.fs" />
     
     
     <Compile Include="Program.fs" />

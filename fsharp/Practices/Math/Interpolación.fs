@@ -1,7 +1,7 @@
 ﻿namespace Practices
 
 module Interpolación =
-//    open Plotly.NET
+//      
     let pi = 3.14159
 
     let rec fact n = 
